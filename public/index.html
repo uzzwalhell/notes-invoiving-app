@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Notes & Invoicing App</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; }
+    li { margin-bottom: 8px; }
+    button { margin-left: 8px; cursor: pointer; }
+    input { padding: 4px; margin: 2px; }
+    #authSection, #appSection { margin-bottom: 30px; }
+    #appSection { display: none; }
+    .error { color: red; }
+    .item-row { margin-bottom: 6px; }
+    .invoice-card { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 6px; }
+    table { border-collapse: collapse; margin-top: 20px; }
+    h2 { margin-top: 40px; }
+  </style>
+</head>
+<body>
+  <h1>Notes & Invoicing App</h1>
+
+  <div id="authSection">
+    <h2>Sign Up</h2>
+    <input type="text" id="signupUsername" placeholder="Username" />
+    <input type="password" id="signupPassword" placeholder="Password" />
+    <button onclick="signup()">Sign Up</button>
+
+    <h2>Log In</h2>
+    <input type="text" id="loginUsername" placeholder="Username" />
+    <input type="password" id="loginPassword" placeholder="Password" />
+    <button onclick="login()">Log In</button>
+
+    <p id="authMessage"></p>
+  </div>
+
+  <div id="appSection">
+    <button onclick="logout()">Log Out</button>
+
+    <h2>Notes</h2>
+    <input type="text" id="noteInput" placeholder="Enter a note" />
+    <button onclick="addNote()">Add</button>
+    <ul id="notesList"></ul>
+
+    <h2>Create Invoice</h2>
+    <div>
+      <input type="text" id="invoiceNumber" placeholder="Invoice Number (e.g. INV-002)" />
+      <input type="text" id="clientName" placeholder="Client Name" />
+      <input type="email" id="clientEmail" placeholder="Client Email" />
+      <input type="date" id="dueDate" />
+    </div>
+
+    <h3>Line Items</h3>
+    <div id="itemsContainer"></div>
+    <button onclick="addItemRow()">+ Add Item</button>
+    <br /><br />
+    <button onclick="createInvoice()">Create Invoice</button>
+    <p id="invoiceMessage"></p>
+
+    <h2>My Invoices</h2>
+    <div id="invoicesList"></div>
+  </div>
+
+  <script>
+    let token = null;
+
+    // ---------- AUTH ----------
+
+    async function signup() {
+      const username = document.getElementById("signupUsername").value;
+      const password = document.getElementById("signupPassword").value;
+
+      const response = await fetch("/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await response.json();
+      document.getElementById("authMessage").textContent = data.message || data.error;
+    }
+
+    async function login() {
+      const username = document.getElementById("loginUsername").value;
+      const password = document.getElementById("loginPassword").value;
+
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await response.json();
+
+      if (data.token) {
+        token = data.token;
+        document.getElementById("authSection").style.display = "none";
+        document.getElementById("appSection").style.display = "block";
+        loadNotes();
+        loadInvoices();
+        addItemRow(); // start with one empty item row
+      } else {
+        document.getElementById("authMessage").textContent = data.error;
+      }
+    }
+
+    function logout() {
+      token = null;
+      document.getElementById("authSection").style.display = "block";
+      document.getElementById("appSection").style.display = "none";
+    }
+
+    // ---------- NOTES ----------
+
+    async function loadNotes() {
+      const response = await fetch("/notes", { headers: { "Authorization": `Bearer ${token}` } });
+      const notes = await response.json();
+      const list = document.getElementById("notesList");
+      list.innerHTML = "";
+      notes.forEach((note) => {
+        const li = document.createElement("li");
+        li.textContent = note.text;
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Delete";
+        deleteBtn.onclick = () => deleteNote(note.id);
+        li.appendChild(deleteBtn);
+        list.appendChild(li);
+      });
+    }
+
+    async function addNote() {
+      const input = document.getElementById("noteInput");
+      const text = input.value;
+      if (!text) return;
+      await fetch("/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ text })
+      });
+      input.value = "";
+      loadNotes();
+    }
+
+    async function deleteNote(id) {
+      await fetch(`/notes/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+      loadNotes();
+    }
+
+    // ---------- INVOICES ----------
+
+    function addItemRow() {
+      const container = document.getElementById("itemsContainer");
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
+        <input type="text" class="itemDesc" placeholder="Description" />
+        <input type="number" class="itemQty" placeholder="Qty" style="width: 60px;" />
+        <input type="number" class="itemPrice" placeholder="Unit Price" style="width: 90px;" />
+        <button onclick="this.parentElement.remove()">Remove</button>
+      `;
+      container.appendChild(row);
+    }
+
+    async function createInvoice() {
+      const invoiceNumber = document.getElementById("invoiceNumber").value;
+      const clientName = document.getElementById("clientName").value;
+      const clientEmail = document.getElementById("clientEmail").value;
+      const dueDate = document.getElementById("dueDate").value;
+
+      const rows = document.querySelectorAll(".item-row");
+      const items = Array.from(rows).map((row) => ({
+        description: row.querySelector(".itemDesc").value,
+        quantity: Number(row.querySelector(".itemQty").value),
+        unitPrice: Number(row.querySelector(".itemPrice").value)
+      })).filter(item => item.description && item.quantity > 0);
+
+      if (!invoiceNumber || !clientName || items.length === 0) {
+        document.getElementById("invoiceMessage").textContent = "Please fill invoice number, client name, and at least one item.";
+        return;
+      }
+
+      const response = await fetch("/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ invoiceNumber, clientName, clientEmail, dueDate, items })
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        document.getElementById("invoiceMessage").textContent = data.message;
+        document.getElementById("invoiceNumber").value = "";
+        document.getElementById("clientName").value = "";
+        document.getElementById("clientEmail").value = "";
+        document.getElementById("dueDate").value = "";
+        document.getElementById("itemsContainer").innerHTML = "";
+        addItemRow();
+        loadInvoices();
+      } else {
+        document.getElementById("invoiceMessage").textContent = data.error;
+      }
+    }
+
+    async function loadInvoices() {
+      const response = await fetch("/invoices", { headers: { "Authorization": `Bearer ${token}` } });
+      const invoices = await response.json();
+
+      const container = document.getElementById("invoicesList");
+      container.innerHTML = "";
+
+      invoices.forEach((invoice) => {
+        const card = document.createElement("div");
+        card.className = "invoice-card";
+        card.innerHTML = `
+          <strong>${invoice.invoiceNumber}</strong> — ${invoice.clientName} (${invoice.status})<br/>
+          Due: ${invoice.dueDate || "N/A"}
+          <button onclick="downloadPdf(${invoice.id}, '${invoice.invoiceNumber}')">Download PDF</button>
+          <button onclick="deleteInvoice(${invoice.id})">Delete</button>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    async function downloadPdf(id, invoiceNumber) {
+      const response = await fetch(`/invoices/${id}/pdf`, { headers: { "Authorization": `Bearer ${token}` } });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${invoiceNumber}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+
+    async function deleteInvoice(id) {
+      await fetch(`/invoices/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+      loadInvoices();
+    }
+  </script>
+</body>
