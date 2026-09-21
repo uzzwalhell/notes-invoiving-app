@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Clients — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link active" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1>Clients</h1>
+        <button class="btn btn-primary" onclick="showAddForm()">+ Add Client</button>
+      </div>
+
+      <div class="card mb-16" id="addFormCard" style="display: none;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Client Name</label>
+            <input type="text" id="clientName" placeholder="e.g. Acme Corp" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="clientEmail" placeholder="billing@acme.com" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TRN (optional)</label>
+            <input type="text" id="clientTRN" placeholder="e.g. 100987654300002" />
+          </div>
+          <div class="form-group">
+            <label>Address (optional)</label>
+            <input type="text" id="clientAddress" placeholder="Client address" />
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="addClient()">Save Client</button>
+        <button class="btn btn-secondary" onclick="hideAddForm()">Cancel</button>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>TRN</th><th></th></tr>
+          </thead>
+          <tbody id="clientsBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display: none;">
+          No clients yet. Add your first one above.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+
+    function showAddForm() { document.getElementById("addFormCard").style.display = "block"; }
+    function hideAddForm() {
+      document.getElementById("addFormCard").style.display = "none";
+      document.getElementById("clientName").value = "";
+      document.getElementById("clientEmail").value = "";
+      document.getElementById("clientTRN").value = "";
+      document.getElementById("clientAddress").value = "";
+    }
+
+    async function loadClients() {
+      const clients = await apiGet("/clients");
+      const body = document.getElementById("clientsBody");
+      body.innerHTML = "";
+
+      if (clients.length === 0) {
+        document.getElementById("emptyState").style.display = "block";
+        return;
+      }
+      document.getElementById("emptyState").style.display = "none";
+
+      clients.forEach((c) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.name}</td>
+          <td>${c.email || "—"}</td>
+          <td>${c.trn || "—"}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteClient(${c.id})">Delete</button></td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    async function addClient() {
+      const name = document.getElementById("clientName").value;
+      const email = document.getElementById("clientEmail").value;
+      const trn = document.getElementById("clientTRN").value;
+      const address = document.getElementById("clientAddress").value;
+
+      if (!name) {
+        alert("Client name is required.");
+        return;
+      }
+
+      await apiPost("/clients", { name, email, trn, address });
+      hideAddForm();
+      loadClients();
+    }
+
+    async function deleteClient(id) {
+      if (!confirm("Delete this client?")) return;
+      await apiDelete(`/clients/${id}`);
+      loadClients();
+    }
+
+    loadClients();
+  </script>
+</body>
+</html>

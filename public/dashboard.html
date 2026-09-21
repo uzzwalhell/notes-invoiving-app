@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link active" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1>Dashboard</h1>
+        <span class="text-muted" id="welcomeMsg"></span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="label">Total Invoices</div>
+          <div class="value" id="statTotalInvoices">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Invoiced</div>
+          <div class="value" id="statTotalInvoiced">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Unpaid Amount</div>
+          <div class="value" id="statUnpaid">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Clients</div>
+          <div class="value" id="statClients">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flex-between mb-16">
+          <strong>Recent Invoices</strong>
+          <button class="btn btn-primary btn-sm" onclick="location.href='/invoice-form.html'">+ New Invoice</button>
+        </div>
+        <table id="recentTable">
+          <thead>
+            <tr><th>Invoice #</th><th>Client</th><th>Total</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="recentBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display: none;">
+          No invoices yet. <a href="/invoice-form.html">Create your first one</a>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+    document.getElementById("welcomeMsg").textContent = "Welcome, " + localStorage.getItem("username");
+
+    async function loadDashboard() {
+      const data = await apiGet("/dashboard");
+
+      document.getElementById("statTotalInvoices").textContent = data.totalInvoices;
+      document.getElementById("statTotalInvoiced").textContent = data.totalInvoiced + " AED";
+      document.getElementById("statUnpaid").textContent = data.totalUnpaid + " AED";
+      document.getElementById("statClients").textContent = data.clientCount;
+
+      const body = document.getElementById("recentBody");
+      body.innerHTML = "";
+
+      if (data.recentInvoices.length === 0) {
+        document.getElementById("emptyState").style.display = "block";
+      } else {
+        data.recentInvoices.forEach((inv) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${inv.invoiceNumber}</td>
+            <td>${inv.clientName}</td>
+            <td>${inv.total || "—"} ${inv.currency}</td>
+            <td><span class="badge badge-${inv.status}">${inv.status}</span></td>
+            <td><a href="/invoice-detail.html?id=${inv.id}">View →</a></td>
+          `;
+          body.appendChild(tr);
+        });
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Settings — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link active" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1>Business Settings</h1>
+      </div>
+
+      <div class="card" style="max-width: 500px;">
+        <p class="text-muted mb-16">This information appears on every invoice you create, including your Tax Registration Number (TRN) for UAE compliance.</p>
+
+        <div class="form-group">
+          <label>Business Name</label>
+          <input type="text" id="businessName" placeholder="e.g. Uzzwal Tech Services" />
+        </div>
+        <div class="form-group">
+          <label>Tax Registration Number (TRN)</label>
+          <input type="text" id="trn" placeholder="e.g. 100234567800003" />
+        </div>
+        <div class="form-group">
+          <label>Business Address</label>
+          <input type="text" id="address" placeholder="e.g. Dubai Silicon Oasis, Dubai, UAE" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="email" placeholder="business@email.com" />
+          </div>
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" id="phone" placeholder="+971 5X XXX XXXX" />
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveProfile()">Save Settings</button>
+        <p id="saveMessage" class="text-muted mt-16"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+
+    async function loadProfile() {
+      const profile = await apiGet("/profile");
+      if (profile.businessName) document.getElementById("businessName").value = profile.businessName;
+      if (profile.trn) document.getElementById("trn").value = profile.trn;
+      if (profile.address) document.getElementById("address").value = profile.address;
+      if (profile.email) document.getElementById("email").value = profile.email;
+      if (profile.phone) document.getElementById("phone").value = profile.phone;
+    }
+
+    async function saveProfile() {
+      const businessName = document.getElementById("businessName").value;
+      const trn = document.getElementById("trn").value;
+      const address = document.getElementById("address").value;
+      const email = document.getElementById("email").value;
+      const phone = document.getElementById("phone").value;
+
+      if (!businessName || !trn) {
+        document.getElementById("saveMessage").textContent = "Business name and TRN are required.";
+        document.getElementById("saveMessage").style.color = "#dc2626";
+        return;
+      }
+
+      await apiPut("/profile", { businessName, trn, address, email, phone });
+      document.getElementById("saveMessage").textContent = "Saved successfully!";
+      document.getElementById("saveMessage").style.color = "#16a34a";
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

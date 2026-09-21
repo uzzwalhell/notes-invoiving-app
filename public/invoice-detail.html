@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice Detail — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link active" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1 id="invoiceTitle">Invoice</h1>
+        <button class="btn btn-secondary" onclick="location.href='/invoices.html'">← Back to Invoices</button>
+      </div>
+
+      <div class="card mb-16">
+        <div class="flex-between mb-16">
+          <div>
+            <div class="text-muted">Status</div>
+            <select id="statusSelect" onchange="updateStatus()" style="width: 150px; margin-top: 4px;">
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </div>
+          <div>
+            <button class="btn btn-secondary" onclick="downloadFile('pdf')">📄 Download PDF</button>
+            <button class="btn btn-secondary" onclick="downloadFile('xml')">📋 Download XML</button>
+          </div>
+        </div>
+
+        <div class="form-row mb-16">
+          <div>
+            <div class="text-muted" style="font-size:12px;">SELLER</div>
+            <div id="sellerInfo" style="font-weight: 600;"></div>
+          </div>
+          <div>
+            <div class="text-muted" style="font-size:12px;">CLIENT</div>
+            <div id="clientInfo" style="font-weight: 600;"></div>
+          </div>
+        </div>
+
+        <div class="form-row mb-16">
+          <div><span class="text-muted">Issue Date:</span> <span id="issueDate"></span></div>
+          <div><span class="text-muted">Due Date:</span> <span id="dueDateDisplay"></span></div>
+        </div>
+
+        <table>
+          <thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>VAT</th><th>Line Total</th></tr></thead>
+          <tbody id="itemsBody"></tbody>
+        </table>
+
+        <div style="max-width: 300px; margin-left: auto; margin-top: 16px;">
+          <div class="flex-between"><span class="text-muted">Subtotal</span><span id="subtotalDisplay"></span></div>
+          <div class="flex-between"><span class="text-muted">VAT</span><span id="vatDisplay"></span></div>
+          <div class="flex-between" style="font-weight: 700; font-size: 16px; margin-top: 8px;"><span>Total</span><span id="totalDisplay"></span></div>
+        </div>
+      </div>
+
+      <button class="btn btn-danger" onclick="deleteThisInvoice()">Delete Invoice</button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+    const params = new URLSearchParams(window.location.search);
+    const invoiceId = params.get("id");
+
+    async function loadInvoice() {
+      const invoice = await apiGet(`/invoices/${invoiceId}`);
+
+      if (!invoice || invoice.error) {
+        document.querySelector(".main").innerHTML = "<p>Invoice not found.</p>";
+        return;
+      }
+
+      document.getElementById("invoiceTitle").textContent = "Invoice " + invoice.invoiceNumber;
+      document.getElementById("statusSelect").value = invoice.status;
+      document.getElementById("sellerInfo").textContent = `${invoice.sellerName} (TRN: ${invoice.sellerTRN})`;
+      document.getElementById("clientInfo").textContent = `${invoice.clientName}${invoice.clientTRN ? " (TRN: " + invoice.clientTRN + ")" : ""}`;
+      document.getElementById("issueDate").textContent = invoice.issueDate.split(" ")[0];
+      document.getElementById("dueDateDisplay").textContent = invoice.dueDate || "—";
+
+      const body = document.getElementById("itemsBody");
+      body.innerHTML = "";
+      let subtotal = 0;
+      let vat = 0;
+
+      invoice.items.forEach((item) => {
+        const lineTotal = item.quantity * item.unitPrice;
+        const lineVat = lineTotal * (item.vatRate / 100);
+        subtotal += lineTotal;
+        vat += lineVat;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${item.description}</td>
+          <td>${item.quantity}</td>
+          <td>${item.unitPrice} ${invoice.currency}</td>
+          <td>${item.vatRate}%</td>
+          <td>${lineTotal.toFixed(2)} ${invoice.currency}</td>
+        `;
+        body.appendChild(tr);
+      });
+
+      document.getElementById("subtotalDisplay").textContent = subtotal.toFixed(2) + " " + invoice.currency;
+      document.getElementById("vatDisplay").textContent = vat.toFixed(2) + " " + invoice.currency;
+      document.getElementById("totalDisplay").textContent = (subtotal + vat).toFixed(2) + " " + invoice.currency;
+    }
+
+    async function updateStatus() {
+      const status = document.getElementById("statusSelect").value;
+      await apiPut(`/invoices/${invoiceId}/status`, { status });
+    }
+
+    async function downloadFile(type) {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/invoices/${invoiceId}/${type}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice.${type}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+
+    async function deleteThisInvoice() {
+      if (!confirm("Delete this invoice? This can't be undone.")) return;
+      await apiDelete(`/invoices/${invoiceId}`);
+      window.location.href = "/invoices.html";
+    }
+
+    loadInvoice();
+  </script>
+</body>
+</html>

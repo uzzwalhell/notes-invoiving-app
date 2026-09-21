@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoices — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link active" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1>Invoices</h1>
+        <button class="btn btn-primary" onclick="location.href='/invoice-form.html'">+ New Invoice</button>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr><th>Invoice #</th><th>Client</th><th>Issue Date</th><th>Due Date</th><th>Total</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="invoicesBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display: none;">
+          No invoices yet. <a href="/invoice-form.html">Create your first one</a>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+
+    async function loadInvoices() {
+      const invoices = await apiGet("/invoices");
+      const body = document.getElementById("invoicesBody");
+      body.innerHTML = "";
+
+      if (invoices.length === 0) {
+        document.getElementById("emptyState").style.display = "block";
+        return;
+      }
+
+      invoices.forEach((inv) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><a href="/invoice-detail.html?id=${inv.id}">${inv.invoiceNumber}</a></td>
+          <td>${inv.clientName}</td>
+          <td>${inv.issueDate.split(" ")[0]}</td>
+          <td>${inv.dueDate || "—"}</td>
+          <td>${inv.total} ${inv.currency}</td>
+          <td><span class="badge badge-${inv.status}">${inv.status}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="location.href='/invoice-detail.html?id=${inv.id}'">View</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteInvoice(${inv.id})">Delete</button>
+          </td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    async function deleteInvoice(id) {
+      if (!confirm("Delete this invoice? This can't be undone.")) return;
+      await apiDelete(`/invoices/${id}`);
+      loadInvoices();
+    }
+
+    loadInvoices();
+  </script>
+</body>
+</html>

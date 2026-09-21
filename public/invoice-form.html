@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>New Invoice — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <div class="sidebar">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <div class="nav-link" onclick="location.href='/dashboard.html'">📊 Dashboard</div>
+      <div class="nav-link active" onclick="location.href='/invoices.html'">🧾 Invoices</div>
+      <div class="nav-link" onclick="location.href='/clients.html'">👥 Clients</div>
+      <div class="nav-link" onclick="location.href='/settings.html'">⚙️ Settings</div>
+      <div class="nav-link" onclick="logout()" style="margin-top: 30px; color: #fca5a5;">↩ Log Out</div>
+    </div>
+
+    <div class="main">
+      <div class="topbar">
+        <h1>New Invoice</h1>
+        <button class="btn btn-secondary" onclick="location.href='/invoices.html'">← Back to Invoices</button>
+      </div>
+
+      <div class="card mb-16">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Invoice Number</label>
+            <input type="text" id="invoiceNumber" placeholder="e.g. INV-101" />
+          </div>
+          <div class="form-group">
+            <label>Currency</label>
+            <select id="currency">
+              <option value="AED">AED</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Client</label>
+            <select id="clientSelect" onchange="fillClientDetails()">
+              <option value="">— Select a saved client, or enter manually below —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Due Date</label>
+            <input type="date" id="dueDate" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Client Name</label>
+            <input type="text" id="clientName" placeholder="Client name" />
+          </div>
+          <div class="form-group">
+            <label>Client Email</label>
+            <input type="email" id="clientEmail" placeholder="client@email.com" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Client TRN (optional)</label>
+          <input type="text" id="clientTRN" placeholder="Client's tax registration number" />
+        </div>
+      </div>
+
+      <div class="card mb-16">
+        <div class="flex-between mb-16">
+          <strong>Line Items</strong>
+          <button class="btn btn-secondary btn-sm" onclick="addItemRow()">+ Add Item</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 8px;">
+          <label>Description</label><label>Qty</label><label>Unit Price</label><label>VAT %</label><label></label>
+        </div>
+        <div id="itemsContainer"></div>
+      </div>
+
+      <div class="card" style="max-width: 350px; margin-left: auto;">
+        <div class="flex-between mb-16"><span class="text-muted">Subtotal</span><span id="subtotalDisplay">0.00</span></div>
+        <div class="flex-between mb-16"><span class="text-muted">VAT</span><span id="vatDisplay">0.00</span></div>
+        <div class="flex-between" style="font-weight: 700; font-size: 16px;"><span>Total</span><span id="totalDisplay">0.00</span></div>
+      </div>
+
+      <div class="mt-16">
+        <button class="btn btn-primary" onclick="createInvoice()">Create Invoice</button>
+        <p class="error-msg" id="formMessage"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    requireLogin();
+    let savedClients = [];
+
+    async function init() {
+      savedClients = await apiGet("/clients");
+      const select = document.getElementById("clientSelect");
+      savedClients.forEach((c) => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        select.appendChild(opt);
+      });
+      addItemRow();
+    }
+
+    function fillClientDetails() {
+      const id = document.getElementById("clientSelect").value;
+      if (!id) return;
+      const client = savedClients.find((c) => c.id == id);
+      document.getElementById("clientName").value = client.name;
+      document.getElementById("clientEmail").value = client.email || "";
+      document.getElementById("clientTRN").value = client.trn || "";
+    }
+
+    function addItemRow() {
+      const container = document.getElementById("itemsContainer");
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
+        <input type="text" class="itemDesc" placeholder="Description" oninput="calculateTotals()" />
+        <input type="number" class="itemQty" placeholder="1" value="1" oninput="calculateTotals()" />
+        <input type="number" class="itemPrice" placeholder="0.00" oninput="calculateTotals()" />
+        <input type="number" class="itemVat" placeholder="5" value="5" oninput="calculateTotals()" />
+        <button class="btn btn-danger btn-sm" onclick="this.parentElement.remove(); calculateTotals();">✕</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function calculateTotals() {
+      const rows = document.querySelectorAll(".item-row");
+      let subtotal = 0;
+      let vat = 0;
+
+      rows.forEach((row) => {
+        const qty = Number(row.querySelector(".itemQty").value) || 0;
+        const price = Number(row.querySelector(".itemPrice").value) || 0;
+        const vatRate = Number(row.querySelector(".itemVat").value) || 0;
+        const lineTotal = qty * price;
+        subtotal += lineTotal;
+        vat += lineTotal * (vatRate / 100);
+      });
+
+      const currency = document.getElementById("currency").value;
+      document.getElementById("subtotalDisplay").textContent = subtotal.toFixed(2) + " " + currency;
+      document.getElementById("vatDisplay").textContent = vat.toFixed(2) + " " + currency;
+      document.getElementById("totalDisplay").textContent = (subtotal + vat).toFixed(2) + " " + currency;
+    }
+
+    async function createInvoice() {
+      const invoiceNumber = document.getElementById("invoiceNumber").value;
+      const currency = document.getElementById("currency").value;
+      const clientId = document.getElementById("clientSelect").value || null;
+      const clientName = document.getElementById("clientName").value;
+      const clientEmail = document.getElementById("clientEmail").value;
+      const clientTRN = document.getElementById("clientTRN").value;
+      const dueDate = document.getElementById("dueDate").value;
+
+      const rows = document.querySelectorAll(".item-row");
+      const items = Array.from(rows).map((row) => ({
+        description: row.querySelector(".itemDesc").value,
+        quantity: Number(row.querySelector(".itemQty").value),
+        unitPrice: Number(row.querySelector(".itemPrice").value),
+        vatRate: Number(row.querySelector(".itemVat").value)
+      })).filter((item) => item.description && item.quantity > 0);
+
+      if (!invoiceNumber || !clientName || items.length === 0) {
+        document.getElementById("formMessage").textContent = "Invoice number, client name, and at least one item are required.";
+        return;
+      }
+
+      const result = await apiPost("/invoices", {
+        invoiceNumber, currency, clientId, clientName, clientEmail, clientTRN, dueDate, items
+      });
+
+      if (result.invoiceId) {
+        window.location.href = `/invoice-detail.html?id=${result.invoiceId}`;
+      } else {
+        document.getElementById("formMessage").textContent = result.error;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
