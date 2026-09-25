@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Settings — InvoicePro</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -50,6 +50,26 @@
         <button class="btn btn-primary" onclick="saveProfile()">Save Settings</button>
         <p id="saveMessage" class="text-muted mt-16"></p>
       </div>
+
+      <div class="card mt-16" style="max-width: 500px;">
+        <strong>Change Password</strong>
+        <p class="text-muted mb-16" style="margin-top: 6px;">Update your account password.</p>
+
+        <div class="form-group">
+          <label>Current Password</label>
+          <input type="password" id="currentPassword" />
+        </div>
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="newPassword" />
+        </div>
+        <div class="form-group">
+          <label>Confirm New Password</label>
+          <input type="password" id="confirmNewPassword" />
+        </div>
+        <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
+        <p id="passwordMessage" class="mt-16"></p>
+      </div>
     </div>
   </div>
 
@@ -82,6 +102,26 @@
       await apiPut("/profile", { businessName, trn, address, email, phone });
       document.getElementById("saveMessage").textContent = "Saved successfully!";
       document.getElementById("saveMessage").style.color = "#16a34a";
+    }
+
+    async function changePassword() {
+      const currentPassword = document.getElementById("currentPassword").value;
+      const newPassword = document.getElementById("newPassword").value;
+      const confirmPassword = document.getElementById("confirmNewPassword").value;
+
+      const result = await apiPut("/change-password", { currentPassword, newPassword, confirmPassword });
+
+      const msg = document.getElementById("passwordMessage");
+      if (result.message) {
+        msg.textContent = result.message;
+        msg.style.color = "#16a34a";
+        document.getElementById("currentPassword").value = "";
+        document.getElementById("newPassword").value = "";
+        document.getElementById("confirmNewPassword").value = "";
+      } else {
+        msg.textContent = result.error;
+        msg.style.color = "#dc2626";
+      }
     }
 
     loadProfile();

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Email — InvoicePro</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card" style="text-align: center;">
+      <div class="sidebar-logo">Invoice<span>Pro</span></div>
+      <p id="statusMessage" style="margin: 20px 0;">Verifying your email...</p>
+      <a href="/index.html" class="btn btn-primary btn-block" id="loginLink" style="display: none;">Go to Login</a>
+    </div>
+  </div>
+
+  <script>
+    async function verify() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+
+      if (!token) {
+        document.getElementById("statusMessage").textContent = "No verification token found.";
+        return;
+      }
+
+      const response = await fetch(`/verify-email?token=${token}`);
+      const data = await response.json();
+
+      if (response.ok) {
+        document.getElementById("statusMessage").textContent = "✓ " + data.message;
+        document.getElementById("statusMessage").style.color = "#16a34a";
+      } else {
+        document.getElementById("statusMessage").textContent = data.error;
+        document.getElementById("statusMessage").style.color = "#dc2626";
+      }
+      document.getElementById("loginLink").style.display = "block";
+    }
+
+    verify();
+  </script>
+</body>
+</html>

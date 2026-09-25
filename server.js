@@ -3,14 +3,54 @@ import db from "./db.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import PDFDocument from "pdfkit";
+import rateLimit from "express-rate-limit";
+import { Resend } from "resend";
+import crypto from "crypto";
 import "dotenv/config";
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const resend = new Resend(process.env.RESEND_API_KEY);
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static("public"));
+
+// ---------- VALIDATION HELPERS ----------
+
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+function isStrongPassword(password) {
+  const strongRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
+  return strongRegex.test(password);
+}
+
+// ---------- RATE LIMITING ----------
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many signup attempts. Please try again later." }
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: "Too many reset requests. Please try again in 15 minutes." }
+});
+
+// ---------- AUTH MIDDLEWARE ----------
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -31,34 +71,200 @@ app.get("/api", (req, res) => {
   res.send("E-Invoicing API is running!");
 });
 
-// ---------- AUTH ----------
+// ---------- AUTH ROUTES ----------
 
-app.post("/signup", async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password required" });
+app.post("/signup", signupLimiter, async (req, res) => {
+  const { username, email, password, confirmPassword } = req.body;
+
+  if (!username || !email || !password || !confirmPassword) {
+    return res.status(400).json({ error: "All fields are required" });
   }
+  if (username.length < 3) {
+    return res.status(400).json({ error: "Username must be at least 3 characters" });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: "Please enter a valid email address" });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: "Passwords do not match" });
+  }
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      error: "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character"
+    });
+  }
+
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const result = db.prepare("INSERT INTO users (username, password) VALUES (?, ?)").run(username, hashedPassword);
-    res.json({ message: "User created!", userId: result.lastInsertRowid });
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    const result = db.prepare(
+      "INSERT INTO users (username, email, password, verified, verificationToken) VALUES (?, ?, ?, 0, ?)"
+    ).run(username, email.toLowerCase(), hashedPassword, verificationToken);
+
+    const verifyLink = `${req.protocol}://${req.get("host")}/verify-email.html?token=${verificationToken}`;
+
+    await resend.emails.send({
+      from: "InvoicePro <onboarding@resend.dev>",
+      to: email,
+      subject: "Verify your InvoicePro account",
+      html: `
+        <h2>Welcome to InvoicePro!</h2>
+        <p>Hi ${username}, please confirm your email address to activate your account.</p>
+        <p><a href="${verifyLink}" style="background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">Verify Email</a></p>
+        <p>Or copy this link: ${verifyLink}</p>
+      `
+    });
+
+    res.json({ message: "Account created! Please check your email to verify your account.", userId: result.lastInsertRowid });
   } catch (err) {
-    res.status(400).json({ error: "Username already taken" });
+    if (err.message.includes("email")) {
+      return res.status(400).json({ error: "An account with this email already exists" });
+    }
+    res.status(400).json({ error: "Something went wrong. Please try again." });
   }
 });
 
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+app.get("/verify-email", (req, res) => {
+  const { token } = req.query;
+  const user = db.prepare("SELECT * FROM users WHERE verificationToken = ?").get(token);
+
   if (!user) {
-    return res.status(401).json({ error: "Invalid username or password" });
+    return res.status(400).json({ error: "Invalid or expired verification link" });
   }
+
+  db.prepare("UPDATE users SET verified = 1, verificationToken = NULL WHERE id = ?").run(user.id);
+  res.json({ message: "Email verified successfully!" });
+});
+
+app.post("/login", loginLimiter, async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+  if (!user) {
+    return res.status(401).json({ error: "Invalid email or password" });
+  }
+
   const passwordMatches = await bcrypt.compare(password, user.password);
+
   if (!passwordMatches) {
-    return res.status(401).json({ error: "Invalid username or password" });
+    return res.status(401).json({ error: "Invalid email or password" });
   }
+
+  if (!user.verified) {
+    return res.status(403).json({ error: "Please verify your email before logging in. Check your inbox." });
+  }
+
   const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: "8h" });
   res.json({ message: "Login successful!", token, username: user.username });
+});
+
+app.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase());
+
+  if (!user) {
+    return res.json({ message: "If that email exists, a reset link has been sent." });
+  }
+
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const resetTokenExpiry = Date.now() + 60 * 60 * 1000;
+
+  db.prepare("UPDATE users SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?").run(
+    resetToken, resetTokenExpiry, user.id
+  );
+
+  const resetLink = `${req.protocol}://${req.get("host")}/reset-password.html?token=${resetToken}`;
+
+  await resend.emails.send({
+    from: "InvoicePro <onboarding@resend.dev>",
+    to: email,
+    subject: "Reset your InvoicePro password",
+    html: `
+      <h2>Password Reset Request</h2>
+      <p>Hi ${user.username}, we received a request to reset your password.</p>
+      <p><a href="${resetLink}" style="background:#2563eb;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;">Reset Password</a></p>
+      <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+      <p>Or copy this link: ${resetLink}</p>
+    `
+  });
+
+  res.json({ message: "If that email exists, a reset link has been sent." });
+});
+
+app.post("/reset-password", async (req, res) => {
+  const { token, newPassword, confirmPassword } = req.body;
+
+  if (!token || !newPassword || !confirmPassword) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ error: "Passwords do not match" });
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({
+      error: "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character"
+    });
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE resetToken = ?").get(token);
+
+  if (!user) {
+    return res.status(400).json({ error: "Invalid or expired reset link" });
+  }
+
+  if (Date.now() > user.resetTokenExpiry) {
+    return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  db.prepare("UPDATE users SET password = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?").run(
+    hashedPassword, user.id
+  );
+
+  res.json({ message: "Password reset successfully! You can now log in." });
+});
+
+app.put("/change-password", requireAuth, async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ error: "New passwords do not match" });
+  }
+
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({
+      error: "New password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character"
+    });
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.userId);
+  const currentMatches = await bcrypt.compare(currentPassword, user.password);
+
+  if (!currentMatches) {
+    return res.status(401).json({ error: "Current password is incorrect" });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, req.user.userId);
+
+  res.json({ message: "Password changed successfully!" });
 });
 
 // ---------- BUSINESS PROFILE ----------
@@ -329,7 +535,7 @@ app.get("/invoices/:id/xml", requireAuth, (req, res) => {
   res.send(xml);
 });
 
-// ---------- NOTES (kept from before) ----------
+// ---------- NOTES ----------
 
 app.get("/notes", requireAuth, (req, res) => {
   const notes = db.prepare("SELECT * FROM notes").all();

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>InvoicePro — Login</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -18,26 +18,45 @@
 
       <div id="loginForm">
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="loginUsername" placeholder="Enter your username" />
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com" />
         </div>
         <div class="form-group">
           <label>Password</label>
           <input type="password" id="loginPassword" placeholder="Enter your password" />
         </div>
         <button class="btn btn-primary btn-block" onclick="login()">Log In</button>
+        <p style="text-align: center; margin-top: 12px;">
+          <a href="/forgot-password.html" style="font-size: 13px;">Forgot password?</a>
+        </p>
       </div>
 
       <div id="signupForm" style="display: none;">
         <div class="form-group">
-          <label>Choose a Username</label>
-          <input type="text" id="signupUsername" placeholder="Choose a username" />
+          <label>Username</label>
+          <input type="text" id="signupUsername" placeholder="Choose a username" oninput="validateSignupForm()" />
         </div>
         <div class="form-group">
-          <label>Choose a Password</label>
-          <input type="password" id="signupPassword" placeholder="Choose a password" />
+          <label>Email</label>
+          <input type="email" id="signupEmail" placeholder="you@example.com" oninput="validateSignupForm()" />
         </div>
-        <button class="btn btn-primary btn-block" onclick="signup()">Create Account</button>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="signupPassword" placeholder="At least 8 characters" oninput="validateSignupForm()" />
+          <div id="passwordHint" class="text-muted" style="font-size: 12px; margin-top: 6px; line-height: 1.6;">
+            Must include: <span id="checkLength">○ 8+ characters</span><br/>
+            <span id="checkUpper">○ Uppercase letter</span> &nbsp;
+            <span id="checkLower">○ Lowercase letter</span><br/>
+            <span id="checkNumber">○ Number</span> &nbsp;
+            <span id="checkSpecial">○ Special character</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="signupConfirmPassword" placeholder="Re-enter your password" oninput="validateSignupForm()" />
+          <div id="matchHint" style="font-size: 12px; margin-top: 4px;"></div>
+        </div>
+        <button class="btn btn-primary btn-block" id="signupBtn" onclick="signup()" disabled>Create Account</button>
       </div>
 
       <p class="error-msg" id="authMessage"></p>
@@ -53,14 +72,62 @@
       document.getElementById("authMessage").textContent = "";
     }
 
+    function validateSignupForm() {
+      const password = document.getElementById("signupPassword").value;
+      const confirm = document.getElementById("signupConfirmPassword").value;
+      const email = document.getElementById("signupEmail").value;
+      const username = document.getElementById("signupUsername").value;
+
+      const checks = {
+        length: password.length >= 8,
+        upper: /[A-Z]/.test(password),
+        lower: /[a-z]/.test(password),
+        number: /\d/.test(password),
+        special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
+      };
+
+      updateCheck("checkLength", checks.length, "8+ characters");
+      updateCheck("checkUpper", checks.upper, "Uppercase letter");
+      updateCheck("checkLower", checks.lower, "Lowercase letter");
+      updateCheck("checkNumber", checks.number, "Number");
+      updateCheck("checkSpecial", checks.special, "Special character");
+
+      const allPasswordChecksPass = Object.values(checks).every(Boolean);
+      const matchHint = document.getElementById("matchHint");
+
+      if (confirm.length > 0) {
+        if (password === confirm) {
+          matchHint.textContent = "✓ Passwords match";
+          matchHint.style.color = "#16a34a";
+        } else {
+          matchHint.textContent = "✕ Passwords do not match";
+          matchHint.style.color = "#dc2626";
+        }
+      } else {
+        matchHint.textContent = "";
+      }
+
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      const usernameValid = username.length >= 3;
+
+      const formValid = allPasswordChecksPass && password === confirm && confirm.length > 0 && emailValid && usernameValid;
+      document.getElementById("signupBtn").disabled = !formValid;
+    }
+
+    function updateCheck(id, passed, label) {
+      const el = document.getElementById(id);
+      el.textContent = (passed ? "✓ " : "○ ") + label;
+      el.style.color = passed ? "#16a34a" : "#64748b";
+    }
+
     async function login() {
-      const username = document.getElementById("loginUsername").value;
+      const email = document.getElementById("loginEmail").value;
       const password = document.getElementById("loginPassword").value;
 
       const response = await fetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, password })
       });
       const data = await response.json();
 
@@ -75,26 +142,27 @@
 
     async function signup() {
       const username = document.getElementById("signupUsername").value;
+      const email = document.getElementById("signupEmail").value;
       const password = document.getElementById("signupPassword").value;
+      const confirmPassword = document.getElementById("signupConfirmPassword").value;
 
       const response = await fetch("/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, email, password, confirmPassword })
       });
       const data = await response.json();
 
       if (response.ok) {
         document.getElementById("authMessage").style.color = "#16a34a";
-        document.getElementById("authMessage").textContent = "Account created! Switching to login...";
-        setTimeout(() => switchTab("login"), 1200);
+        document.getElementById("authMessage").textContent = "Account created! Please check your email to verify your account.";
+        setTimeout(() => switchTab("login"), 1500);
       } else {
         document.getElementById("authMessage").style.color = "#dc2626";
         document.getElementById("authMessage").textContent = data.error;
       }
     }
 
-    // If already logged in, skip straight to dashboard
     if (localStorage.getItem("token")) {
       window.location.href = "/dashboard.html";
     }

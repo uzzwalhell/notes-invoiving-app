@@ -14,7 +14,12 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    verified INTEGER DEFAULT 0,
+    verificationToken TEXT,
+    resetToken TEXT,
+    resetTokenExpiry INTEGER
   )
 `);
 
